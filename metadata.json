@@ -1,0 +1,5 @@
+{
+  "name": "SegurManager Legacy",
+  "description": "Sistema moderno de gestão de carteira de seguros com importação de dados legados (MDB). Visualização de apólices, sinistros, financeiro e clientes.",
+  "requestFramePermissions": []
+}
