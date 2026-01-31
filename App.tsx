@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppData } from './types';
 import { syncFromDrive } from './services/driveService';
 import { DashboardStats } from './components/DashboardStats';
+import MdbUploader from './components/MdbUploader';
 import { 
   MobileClientCard, 
   MobilePolicyCard, 
@@ -17,11 +18,12 @@ import {
   RefreshCw,
   Search,
   Database,
-  CloudLightning
+  CloudLightning,
+  Upload
 } from 'lucide-react';
 
 // Views Enum
-type ViewState = 'dashboard' | 'clients' | 'policies' | 'claims' | 'finance';
+type ViewState = 'dashboard' | 'clients' | 'policies' | 'claims' | 'finance' | 'upload';
 
 const App: React.FC = () => {
   const [data, setData] = useState<AppData | null>(null);
@@ -35,6 +37,8 @@ const App: React.FC = () => {
       const driveData = await syncFromDrive();
       setData(driveData);
       setLastSync(new Date());
+      // Se voltarmos de um upload manual para sync, garantimos que vamos para o dashboard
+      if (view === 'upload') setView('dashboard');
     } catch (error) {
       console.error("Erro ao sincronizar", error);
     } finally {
@@ -46,8 +50,14 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
+  const handleManualUpload = (uploadedData: AppData) => {
+    setData(uploadedData);
+    setLastSync(new Date());
+    setView('dashboard');
+  };
+
   // --- Tela de Carregamento / Sync ---
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-white px-6 text-center">
         <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 animate-pulse">
@@ -66,6 +76,29 @@ const App: React.FC = () => {
             100% { transform: translateX(200%); }
           }
         `}</style>
+      </div>
+    );
+  }
+
+  // Se não houver dados e não estiver carregando, mostra o uploader (primeiro acesso ou erro total)
+  if (!data && !loading) {
+    return <MdbUploader onDataLoaded={handleManualUpload} />;
+  }
+  
+  // Garantia de tipo para o restante do componente (data não é null aqui)
+  const safeData = data!;
+
+  // Se o usuário escolheu fazer upload manual
+  if (view === 'upload') {
+    return (
+      <div className="relative">
+        <button 
+          onClick={() => setView('dashboard')}
+          className="absolute top-4 left-4 z-10 px-4 py-2 bg-white text-slate-600 rounded-lg shadow-sm text-sm font-medium hover:bg-slate-50"
+        >
+          &larr; Voltar
+        </button>
+        <MdbUploader onDataLoaded={handleManualUpload} />
       </div>
     );
   }
@@ -92,15 +125,25 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold text-slate-800">SegurManager</h1>
             <div className="flex items-center gap-1 text-[10px] text-slate-400">
               <Database className="w-3 h-3" />
-              <span>Drive: {data.filename}</span>
+              <span>Drive: {safeData.filename}</span>
             </div>
           </div>
-          <button 
-            onClick={loadData}
-            className="p-2 bg-slate-50 rounded-full text-slate-600 active:bg-slate-200 transition-colors"
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
+          <div className="flex gap-2">
+             <button 
+              onClick={() => setView('upload')}
+              className="p-2 bg-slate-50 rounded-full text-slate-600 active:bg-slate-200 transition-colors"
+              title="Importar Arquivo Manualmente"
+            >
+              <Upload className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={loadData}
+              className="p-2 bg-slate-50 rounded-full text-slate-600 active:bg-slate-200 transition-colors"
+              title="Sincronizar"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         
         {/* Barra de Busca Global (Visual) */}
@@ -130,14 +173,14 @@ const App: React.FC = () => {
             </div>
             
             {/* Stats Compactados para Mobile */}
-            <DashboardStats data={data} />
+            <DashboardStats data={safeData} />
             
             <div>
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-bold text-slate-700">Sinistros Recentes</h3>
                 <button onClick={() => setView('claims')} className="text-xs text-blue-600 font-medium">Ver todos</button>
               </div>
-              {data.sinistros.slice(0, 3).map(sin => (
+              {safeData.sinistros.slice(0, 3).map(sin => (
                 <MobileClaimCard key={sin.id} sinistro={sin} />
               ))}
             </div>
@@ -147,8 +190,8 @@ const App: React.FC = () => {
         {/* Clients View */}
         {view === 'clients' && (
           <div className="space-y-1">
-             <p className="text-xs text-slate-400 mb-2 uppercase font-bold tracking-wider">{data.clientes.length} Clientes encontrados</p>
-            {data.clientes.map(cliente => (
+             <p className="text-xs text-slate-400 mb-2 uppercase font-bold tracking-wider">{safeData.clientes.length} Clientes encontrados</p>
+            {safeData.clientes.map(cliente => (
               <MobileClientCard key={cliente.id} cliente={cliente} />
             ))}
           </div>
@@ -157,9 +200,9 @@ const App: React.FC = () => {
         {/* Policies View */}
         {view === 'policies' && (
           <div className="space-y-1">
-            <p className="text-xs text-slate-400 mb-2 uppercase font-bold tracking-wider">{data.seguros.length} Apólices</p>
-            {data.seguros.map(seguro => {
-              const cliente = data.clientes.find(c => c.id === seguro.clienteId);
+            <p className="text-xs text-slate-400 mb-2 uppercase font-bold tracking-wider">{safeData.seguros.length} Apólices</p>
+            {safeData.seguros.map(seguro => {
+              const cliente = safeData.clientes.find(c => c.id === seguro.clienteId);
               return (
                 <MobilePolicyCard key={seguro.codseguro} seguro={seguro} nomeCliente={cliente?.nome || 'N/A'} />
               );
@@ -170,7 +213,7 @@ const App: React.FC = () => {
         {/* Claims View */}
         {view === 'claims' && (
           <div className="space-y-1">
-            {data.sinistros.map(sinistro => (
+            {safeData.sinistros.map(sinistro => (
               <MobileClaimCard key={sinistro.id} sinistro={sinistro} />
             ))}
           </div>
@@ -179,7 +222,7 @@ const App: React.FC = () => {
         {/* Finance View */}
         {view === 'finance' && (
           <div className="space-y-1">
-            {data.producao.map(prod => (
+            {safeData.producao.map(prod => (
               <MobileFinanceCard key={prod.id} producao={prod} />
             ))}
           </div>
